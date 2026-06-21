@@ -1,0 +1,10 @@
+{
+  "name": "worms-party",
+  "version": "1.0.0",
+  "description": "Worms artillery party game — host on your screen, players join by QR on their phones.",
+  "type": "commonjs",
+  "main": "server.js",
+  "scripts": { "start": "node server.js" },
+  "engines": { "node": ">=18" },
+  "dependencies": { "ws": "^8.18.0", "qrcode": "^1.5.4" }
+}

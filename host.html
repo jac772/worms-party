@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Worms Party — Host</title>
+<style>
+  html,body { margin:0; height:100%; background:#070b16; overflow:hidden;
+    font-family:"Trebuchet MS","Segoe UI",system-ui,sans-serif; color:#e8eef7; }
+  #wrap { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; }
+  canvas#game { background:#0c1226; max-width:100vw; max-height:100vh; box-shadow:0 0 60px rgba(0,0,0,.7); }
+
+  .overlay { position:fixed; inset:0; display:flex; align-items:center; justify-content:center;
+    background:radial-gradient(circle at 50% 30%,#15233f,#070b16 70%); z-index:10; }
+  .overlay.hidden { display:none; }
+  .lobby { display:flex; gap:46px; align-items:center; max-width:1100px; padding:30px; }
+  .qrbox { background:#fff; border-radius:18px; padding:20px; box-shadow:0 20px 60px rgba(0,0,0,.6); }
+  .qrbox svg, .qrbox img { width:300px; height:300px; display:block; }
+  .joinurl { margin-top:12px; text-align:center; color:#0c1226; font-weight:700; font-size:15px; word-break:break-all; }
+  .right { min-width:420px; }
+  h1 { margin:0 0 2px; font-size:48px; letter-spacing:3px; color:#ffd166; text-shadow:0 3px 0 #7a5a10,0 0 30px rgba(255,209,102,.35); }
+  .sub { color:#8fa6c9; margin:0 0 18px; letter-spacing:1px; }
+  .scan { font-size:18px; color:#cfe0f7; margin:0 0 14px; }
+  .scan b { color:#ffd166; }
+  .roster { list-style:none; padding:0; margin:0 0 18px; min-height:54px; display:flex; flex-wrap:wrap; gap:10px; }
+  .pill { display:flex; align-items:center; gap:8px; background:#13203c; border:1px solid #2c3e63; border-radius:30px; padding:8px 16px; font-weight:600; }
+  .dot { width:14px; height:14px; border-radius:50%; }
+  .empty { color:#5e7398; font-style:italic; align-self:center; }
+  .opts { display:flex; gap:18px; flex-wrap:wrap; margin-bottom:20px; }
+  .opt { background:#0e1730; border:1px solid #2c3e63; border-radius:12px; padding:10px 14px; }
+  .opt label { display:block; font-size:12px; color:#8fa6c9; margin-bottom:6px; letter-spacing:.5px; }
+  .opt .seg { display:flex; gap:6px; }
+  .seg button { background:#13203c; border:1px solid #2c3e63; color:#cfe0f7; border-radius:8px; padding:6px 12px; cursor:pointer; font-weight:600; }
+  .seg button.on { border-color:#ffd166; background:#243a66; color:#ffd166; }
+  .btn { padding:16px 50px; border:none; border-radius:12px; cursor:pointer; font-size:22px; font-weight:700; letter-spacing:1px;
+    background:linear-gradient(180deg,#5fbf4f,#3d8f33); color:#06210a; box-shadow:0 6px 0 #2a6322,0 10px 24px rgba(0,0,0,.4); }
+  .btn:hover { filter:brightness(1.07); } .btn:active { transform:translateY(3px); box-shadow:0 3px 0 #2a6322; }
+  .btn:disabled { filter:grayscale(.7) brightness(.7); cursor:not-allowed; }
+  .hint { color:#5e7398; font-size:13px; margin-top:12px; }
+
+  /* corner QR shown during the game so latecomers can still scan */
+  #cornerQR { position:fixed; right:14px; bottom:70px; background:#fff; border-radius:10px; padding:8px; z-index:5; display:none; box-shadow:0 6px 20px rgba(0,0,0,.5); }
+  #cornerQR svg, #cornerQR img { width:96px; height:96px; display:block; }
+  #cornerQR div { text-align:center; color:#0c1226; font-size:10px; font-weight:700; margin-top:4px; }
+
+  #winOv .card { background:linear-gradient(160deg,#16223f,#0e1730); border:1px solid #2c3e63; border-radius:16px;
+    padding:34px 50px; text-align:center; box-shadow:0 20px 60px rgba(0,0,0,.6); }
+  #winTitle { font-size:50px; margin:0 0 8px; } #winSub { color:#a9bcdb; font-size:18px; margin:0 0 24px; }
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="game" width="1280" height="720"></canvas></div>
+
+<!-- LOBBY -->
+<div id="lobby" class="overlay">
+  <div class="lobby">
+    <div>
+      <div class="qrbox"><div id="qrslot"></div><div class="joinurl" id="joinUrl">…</div></div>
+    </div>
+    <div class="right">
+      <h1>WORMS PARTY</h1>
+      <p class="sub">Each player is a team. Last team standing wins.</p>
+      <p class="scan">📱 Scan the QR (or open <b id="joinUrl2">…</b>) to join</p>
+      <ul class="roster" id="roster"><li class="empty">No players yet — waiting for phones…</li></ul>
+      <div class="opts">
+        <div class="opt"><label>BOTS</label><div class="seg" id="botSeg"></div></div>
+        <div class="opt"><label>BOT SKILL</label><div class="seg" id="diffSeg">
+          <button data-d="easy">Easy</button><button data-d="medium" class="on">Med</button><button data-d="hard">Hard</button></div></div>
+        <div class="opt"><label>WORMS / TEAM</label><div class="seg" id="wptSeg">
+          <button data-n="2">2</button><button data-n="3" class="on">3</button><button data-n="4">4</button></div></div>
+      </div>
+      <button class="btn" id="startBtn" disabled>START GAME</button>
+      <div class="hint" id="hint">Need at least 2 teams (players + bots) to start.</div>
+    </div>
+  </div>
+</div>
+
+<!-- corner QR during play -->
+<div id="cornerQR"><div id="cornerSlot"></div><div>scan to join next round</div></div>
+
+<!-- WIN -->
+<div id="winOv" class="overlay hidden"><div class="card">
+  <h1 id="winTitle">Winner!</h1><p id="winSub"></p>
+  <button class="btn" id="againBtn">PLAY AGAIN</button>
+</div></div>
+
+<script src="engine.js"></script>
+<script>
+"use strict";
+const canvas = document.getElementById('game');
+WG.init(canvas); WG.start();
+const PRESET = WG.TEAM_PRESETS;
+
+/* ---------------- lobby state ---------------- */
+const playerOrder = [];                 // join order of ids
+const players = new Map();              // id -> {name}
+let botCount = 1, botDiff = 'medium', wpt = 3;
+let inGame = false;
+const ctrlToTeam = new Map();           // playerId -> teamIndex (during a game)
+
+/* ---------------- QR + join URL ---------------- */
+async function joinBase(){
+  if(['localhost','127.0.0.1'].includes(location.hostname)){
+    try{ const j=await (await fetch('/api/netinfo')).json(); return j.lan; }catch(e){}
+  }
+  return location.origin;
+}
+async function setupJoin(){
+  const base = await joinBase();
+  const url = base + '/play';
+  document.getElementById('joinUrl').textContent = url.replace(/^https?:\/\//,'');
+  document.getElementById('joinUrl2').textContent = url.replace(/^https?:\/\//,'');
+  const qr = '/api/qr?text='+encodeURIComponent(url);
+  document.getElementById('qrslot').innerHTML = '<img alt="join QR" src="'+qr+'">';
+  document.getElementById('cornerSlot').innerHTML = '<img alt="join QR" src="'+qr+'">';
+}
+setupJoin();
+
+/* ---------------- lobby option pickers ---------------- */
+function rebuildBotSeg(){
+  const seg=document.getElementById('botSeg'); seg.innerHTML='';
+  const maxBots = Math.max(0, 4 - Math.min(playerOrder.length,4));
+  if(botCount>maxBots) botCount=maxBots;
+  for(let i=0;i<=maxBots;i++){ const b=document.createElement('button'); b.textContent=i;
+    if(i===botCount) b.className='on'; b.onclick=()=>{ botCount=i; rebuildBotSeg(); refreshLobby(); };
+    seg.appendChild(b); }
+  if(maxBots===0){ const s=document.createElement('span'); s.style.color='#5e7398'; s.style.fontSize='12px'; s.textContent='(table full)'; seg.appendChild(s); }
+}
+document.querySelectorAll('#diffSeg button').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('#diffSeg button').forEach(x=>x.classList.remove('on')); b.classList.add('on'); botDiff=b.dataset.d; });
+document.querySelectorAll('#wptSeg button').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('#wptSeg button').forEach(x=>x.classList.remove('on')); b.classList.add('on'); wpt=+b.dataset.n; });
+
+function refreshLobby(){
+  const ul=document.getElementById('roster'); ul.innerHTML='';
+  if(playerOrder.length===0){ ul.innerHTML='<li class="empty">No players yet — waiting for phones…</li>'; }
+  else playerOrder.slice(0,4).forEach((id,i)=>{
+    const li=document.createElement('li'); li.className='pill';
+    li.innerHTML='<span class="dot" style="background:'+PRESET[i].color+'"></span>'+escapeHtml(players.get(id).name);
+    ul.appendChild(li);
+  });
+  if(playerOrder.length>4){ const li=document.createElement('li'); li.className='empty';
+    li.textContent='+'+(playerOrder.length-4)+' waiting (max 4 play)'; ul.appendChild(li); }
+  rebuildBotSeg();
+  const teamsTotal = Math.min(playerOrder.length,4) + botCount;
+  const ok = teamsTotal>=2 && teamsTotal<=4;
+  document.getElementById('startBtn').disabled = !ok;
+  document.getElementById('hint').textContent = ok
+    ? teamsTotal+' teams ready. Press START.'
+    : 'Need at least 2 teams (players + bots) to start.';
+}
+function escapeHtml(s){ return (''+s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+/* ---------------- websocket (as host) ---------------- */
+let ws;
+function connect(){
+  const proto = location.protocol==='https:'?'wss':'ws';
+  ws = new WebSocket(proto+'://'+location.host+'/?role=host');
+  ws.onmessage = ev=>{ let m; try{ m=JSON.parse(ev.data); }catch(e){ return; } handle(m); };
+  ws.onclose = ()=> setTimeout(connect, 1000);
+}
+connect();
+
+function handle(m){
+  if(m.t==='roster'){ playerOrder.length=0; players.clear();
+    m.players.forEach(p=>{ playerOrder.push(p.id); players.set(p.id,{name:p.name}); });
+    refreshLobby(); pushLobbyStatus(); }
+  else if(m.t==='join'){ if(!players.has(m.id)){ playerOrder.push(m.id); players.set(m.id,{name:m.name}); }
+    refreshLobby(); sendTo(m.id, lobbyStatusFor(m.id)); }
+  else if(m.t==='name'){ if(players.has(m.id)){ players.get(m.id).name=m.name; refreshLobby(); sendTo(m.id, lobbyStatusFor(m.id)); } }
+  else if(m.t==='leave'){ players.delete(m.id);
+    const i=playerOrder.indexOf(m.id); if(i>=0) playerOrder.splice(i,1); ctrlToTeam.delete(m.id); refreshLobby(); }
+  else if(m.t==='p'){ onPlayerInput(m.id, m.msg); }
+}
+const sendTo = (id,msg)=> ws && ws.readyState===1 && ws.send(JSON.stringify({t:'to',id,msg}));
+const sendAll = (msg)=> ws && ws.readyState===1 && ws.send(JSON.stringify({t:'all',msg}));
+
+/* ---------------- lobby status to phones ---------------- */
+function colorFor(id){ const i=playerOrder.indexOf(id); return i>=0&&i<4?PRESET[i].color:'#888'; }
+function lobbyStatusFor(id){
+  const i=playerOrder.indexOf(id);
+  return { t:'status', screen:'lobby', color:colorFor(id),
+    name: players.has(id)?players.get(id).name:'',
+    seat: i<4 ? i+1 : null, msg: i<4 ? 'You\'re in! Waiting for the host to start…' : 'Table full — you\'ll spectate this round.' };
+}
+function pushLobbyStatus(){ playerOrder.forEach(id=> sendTo(id, lobbyStatusFor(id))); }
+
+/* ---------------- start / build game ---------------- */
+function buildTeams(){
+  ctrlToTeam.clear();
+  const teams=[]; const order=playerOrder.slice(0,4);
+  order.forEach((id,i)=>{ teams.push({ name:players.get(id).name, color:PRESET[i].color, isAI:false, controllerId:id });
+    ctrlToTeam.set(id, i); });
+  let slot=teams.length, b=1;
+  while(slot<4 && (slot-order.length)<botCount){ teams.push({ name:'BOT '+b, color:PRESET[slot].color, isAI:true, difficulty:botDiff }); slot++; b++; }
+  return teams;
+}
+function startGame(){
+  const teams=buildTeams(); if(teams.length<2) return;
+  WG.newGame({ teams, wormsPerTeam:wpt });
+  inGame=true;
+  document.getElementById('lobby').classList.add('hidden');
+  document.getElementById('winOv').classList.add('hidden');
+  document.getElementById('cornerQR').style.display='block';
+  broadcastStatus(true);
+}
+document.getElementById('startBtn').onclick = startGame;
+document.getElementById('againBtn').onclick = ()=>{ document.getElementById('winOv').classList.add('hidden');
+  if(Math.min(playerOrder.length,4)+botCount>=2) startGame(); else { inGame=false; document.getElementById('lobby').classList.remove('hidden'); document.getElementById('cornerQR').style.display='none'; refreshLobby(); pushLobbyStatus(); } };
+
+/* ---------------- routing phone input into the engine ---------------- */
+function onPlayerInput(id, msg){
+  if(!inGame || !msg || msg.t!=='in') return;
+  const team = ctrlToTeam.get(id); if(team==null) return;
+  switch(msg.k){
+    case 'aim':   WG.ctrlSetAim(team, +msg.a); break;
+    case 'move':  WG.ctrlMove(team, msg.d|0); break;
+    case 'jump':  WG.ctrlJump(team); break;
+    case 'weapon':WG.ctrlWeapon(team, msg.w); break;
+    case 'fire':  WG.ctrlFire(team, msg.p, (msg.x!=null? msg.x*WG.W : null)); break;
+  }
+}
+
+/* ---------------- status broadcast to phones ---------------- */
+function statusForPlayer(id){
+  const team = ctrlToTeam.get(id);
+  if(team==null) return { t:'status', screen:'spectate', msg:'Game in progress — you\'ll join next round.' };
+  const s = WG.statusFor(team); s.t='status'; s.screen='game'; s.seatColor=PRESET[playerOrder.indexOf(id)%4].color;
+  return s;
+}
+function broadcastStatus(){ if(!inGame) return; playerOrder.forEach(id=> sendTo(id, statusForPlayer(id))); }
+setInterval(()=>{ if(inGame) broadcastStatus(); }, 140);
+WG.on('onTurnChange', ()=> broadcastStatus());
+
+/* ---------------- win ---------------- */
+WG.on('onWin', winner=>{
+  inGame=false;
+  const ov=document.getElementById('winOv'); const title=document.getElementById('winTitle'); const sub=document.getElementById('winSub');
+  if(winner==='draw'){ title.textContent='Draw!'; title.style.color='#cfe0f7'; sub.textContent='Everyone went down together.'; }
+  else { const t=WG.game.teams[winner]; title.textContent=t.name+' WINS!'; title.style.color=t.color;
+    const survivors=WG.game.worms.filter(w=>w.team===winner&&!w.dead).length;
+    sub.textContent=survivors+' worm'+(survivors===1?'':'s')+' left standing.'; }
+  ov.classList.remove('hidden');
+  document.getElementById('cornerQR').style.display='none';
+  // tell phones the result
+  playerOrder.forEach(id=>{ const team=ctrlToTeam.get(id);
+    sendTo(id, { t:'status', screen:'over', won: team!=null && team===winner,
+      msg: winner==='draw'?'Draw!':(WG.game.teams[winner].name+' wins!') }); });
+});
+</script>
+</body>
+</html>

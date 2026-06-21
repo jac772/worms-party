@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Worms — Artillery Battle</title>
+<style>
+  html, body { margin:0; height:100%; background:#070b16; overflow:hidden;
+    font-family:"Trebuchet MS","Segoe UI",system-ui,sans-serif; color:#e8eef7; }
+  #wrap { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; }
+  canvas#game { background:#0c1226; max-width:100vw; max-height:100vh;
+    box-shadow:0 0 60px rgba(0,0,0,0.7); touch-action:none; }
+  .overlay { position:fixed; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    text-align:center; background:rgba(6,10,22,0.86); backdrop-filter:blur(3px); z-index:10; }
+  .overlay.hidden { display:none; }
+  .card { background:linear-gradient(160deg,#16223f,#0e1730); border:1px solid #2c3e63; border-radius:16px;
+    padding:34px 44px; max-width:680px; box-shadow:0 20px 60px rgba(0,0,0,.6); }
+  h1 { margin:0 0 4px; font-size:54px; letter-spacing:3px; color:#ffd166; text-shadow:0 3px 0 #7a5a10,0 0 30px rgba(255,209,102,.4); }
+  .sub { color:#8fa6c9; margin:0 0 22px; font-size:15px; letter-spacing:1px; }
+  .controls { display:grid; grid-template-columns:auto auto; gap:6px 22px; text-align:left; font-size:14px; color:#c4d3ea; margin:0 auto 22px; width:fit-content; }
+  .controls b { color:#9ecbff; font-weight:600; }
+  .diffrow { display:flex; gap:12px; justify-content:center; margin-bottom:24px; }
+  .diff { padding:10px 22px; border-radius:10px; border:2px solid #2c3e63; background:#13203c; color:#cfe0f7; cursor:pointer; font-size:15px; font-weight:600; transition:.15s; }
+  .diff:hover { border-color:#4e7bd0; } .diff.active { border-color:#ffd166; background:#243a66; color:#ffd166; }
+  .btn { padding:14px 46px; border:none; border-radius:12px; cursor:pointer; font-size:20px; font-weight:700; letter-spacing:1px;
+    background:linear-gradient(180deg,#5fbf4f,#3d8f33); color:#06210a; box-shadow:0 6px 0 #2a6322,0 10px 24px rgba(0,0,0,.4); transition:.1s; }
+  .btn:hover { filter:brightness(1.07); } .btn:active { transform:translateY(3px); box-shadow:0 3px 0 #2a6322; }
+  .btn2 { margin-top:14px; background:linear-gradient(180deg,#5b8def,#3a63b8); color:#fff; box-shadow:0 6px 0 #294a87,0 10px 24px rgba(0,0,0,.4); font-size:15px; padding:10px 26px; text-decoration:none; display:inline-block; }
+  #winTitle { font-size:46px; margin:0 0 8px; } #winSub { color:#a9bcdb; font-size:17px; margin:0 0 26px; }
+  .tag { display:inline-block; background:#243a66; border-radius:6px; padding:2px 8px; font-size:13px; color:#9ecbff; }
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="game" width="1280" height="720"></canvas></div>
+
+<div id="menu" class="overlay">
+  <div class="card">
+    <h1>WORMS</h1>
+    <p class="sub">ARTILLERY BATTLE &nbsp;•&nbsp; YOU vs THE CPU</p>
+    <div class="controls">
+      <span><b>Move worm</b></span><span>&larr; &rarr; &nbsp;(or A / D)</span>
+      <span><b>Aim</b></span><span>Move mouse &nbsp;(or &uarr; &darr;)</span>
+      <span><b>Fire</b></span><span>Hold mouse / Space — release to launch</span>
+      <span><b>Jump</b></span><span>J</span>
+      <span><b>Pick weapon</b></span><span>1–6, or Q / E to cycle, or click the bar</span>
+      <span><b>Power</b></span><span>Longer hold = more power (watch the meter)</span>
+    </div>
+    <div class="diffrow">
+      <div class="diff" data-diff="easy">Easy</div>
+      <div class="diff active" data-diff="medium">Medium</div>
+      <div class="diff" data-diff="hard">Hard</div>
+    </div>
+    <button class="btn" id="startBtn">START BATTLE</button>
+    <div><a class="btn btn2" href="/host" id="partyLink">🎉 Host a phone party game →</a></div>
+  </div>
+</div>
+
+<div id="winScreen" class="overlay hidden">
+  <div class="card">
+    <h1 id="winTitle">Victory!</h1>
+    <p id="winSub"></p>
+    <button class="btn" id="againBtn">PLAY AGAIN</button>
+  </div>
+</div>
+
+<script src="engine.js"></script>
+<script>
+"use strict";
+const canvas = document.getElementById('game');
+WG.init(canvas);
+WG.enableLocalInput();
+WG.start();
+
+let chosenDiff = 'medium';
+document.querySelectorAll('.diff').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('.diff').forEach(x=>x.classList.remove('active'));
+  b.classList.add('active'); chosenDiff=b.dataset.diff;
+}));
+
+WG.on('onWin', winner=>{
+  const el=document.getElementById('winScreen'), title=document.getElementById('winTitle'), sub=document.getElementById('winSub');
+  if(winner==='draw'){ title.textContent='Draw!'; title.style.color='#cfe0f7'; sub.textContent='Everyone went down together.'; }
+  else { const youWon = winner===0;
+    title.textContent = youWon?'Victory!':'Defeat'; title.style.color = youWon?'#5fd35f':'#ff6b5e';
+    const t=WG.game.teams[winner], survivors=WG.game.worms.filter(w=>w.team===winner&&!w.dead).length;
+    sub.innerHTML = `<span class="tag">${t.name} wins</span> with ${survivors} worm${survivors===1?'':'s'} standing.`; }
+  el.classList.remove('hidden');
+});
+
+function startGame(){
+  document.getElementById('menu').classList.add('hidden');
+  document.getElementById('winScreen').classList.add('hidden');
+  WG.newGame({ teams:[
+    { name:'YOU', color:WG.TEAM_PRESETS[0].color, isAI:false },
+    { name:'CPU', color:WG.TEAM_PRESETS[1].color, isAI:true, difficulty:chosenDiff }
+  ], wormsPerTeam:4 });
+}
+document.getElementById('startBtn').addEventListener('click', startGame);
+document.getElementById('againBtn').addEventListener('click', startGame);
+window.addEventListener('keydown', e=>{ if(e.key.toLowerCase()==='r' && WG.game && WG.game.phase==='GAMEOVER') startGame(); });
+
+// hide the party link when opened directly from a file (no server)
+if(location.protocol==='file:') document.getElementById('partyLink').style.display='none';
+</script>
+</body>
+</html>

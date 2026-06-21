@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Worms — Controller</title>
+<style>
+  *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; -webkit-user-select:none; user-select:none; }
+  html,body{ margin:0; height:100%; overflow:hidden; background:#0b1020; color:#e8eef7;
+    font-family:"Trebuchet MS","Segoe UI",system-ui,sans-serif; touch-action:none; }
+  #app{ position:fixed; inset:0; display:flex; flex-direction:column; }
+
+  /* JOIN screen */
+  #join{ flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:18px; padding:24px; text-align:center; }
+  #join h1{ font-size:40px; margin:0; color:#ffd166; letter-spacing:2px; }
+  #join p{ color:#8fa6c9; margin:0; }
+  #name{ width:100%; max-width:320px; padding:16px; font-size:20px; border-radius:12px; border:2px solid #2c3e63; background:#13203c; color:#fff; text-align:center; }
+  .big{ width:100%; max-width:320px; padding:18px; font-size:22px; font-weight:700; border:none; border-radius:14px;
+    background:linear-gradient(180deg,#5fbf4f,#3d8f33); color:#06210a; box-shadow:0 6px 0 #2a6322; }
+  .big:active{ transform:translateY(3px); box-shadow:0 3px 0 #2a6322; }
+
+  /* HEADER */
+  #hdr{ padding:10px 14px; display:flex; align-items:center; gap:10px; background:#0e1730; border-bottom:1px solid #22324f; }
+  #hdr .dot{ width:18px; height:18px; border-radius:50%; flex:0 0 auto; }
+  #hdr .who{ font-weight:700; font-size:16px; }
+  #hdr .timer{ margin-left:auto; font-weight:800; font-size:22px; }
+  #status{ padding:10px 14px; text-align:center; font-weight:700; font-size:17px; background:#101a30; }
+
+  /* GAME controls */
+  #game{ flex:1; display:flex; flex-direction:column; }
+  #game.hidden,#join.hidden{ display:none; }
+  #dialWrap{ display:flex; justify-content:center; padding:6px 0 0; }
+  canvas#dial{ width:94vw; max-width:380px; height:auto; touch-action:none; }
+  #weapons{ display:flex; gap:8px; overflow-x:auto; padding:8px 12px; }
+  .wbtn{ flex:0 0 auto; min-width:78px; padding:8px 6px; border-radius:10px; border:2px solid #2c3e63; background:#13203c; text-align:center; }
+  .wbtn.on{ border-color:#ffd166; background:#243a66; }
+  .wbtn .wn{ font-size:12px; font-weight:700; } .wbtn .wa{ font-size:11px; color:#8fa6c9; }
+  #strikeRow{ display:none; padding:6px 14px; }
+  #strikeRow input{ width:100%; }
+  #strikeRow .lab{ font-size:12px; color:#8fa6c9; margin-bottom:2px; }
+  #pad{ margin-top:auto; display:grid; grid-template-columns:1fr 1fr 1.4fr; gap:10px; padding:12px; }
+  .ctl{ padding:20px 0; border-radius:14px; border:none; font-size:18px; font-weight:800; color:#fff; background:#1c2c4a; box-shadow:0 5px 0 #0e1a30; }
+  .ctl:active{ transform:translateY(3px); box-shadow:0 2px 0 #0e1a30; background:#26375a; }
+  .move{ display:flex; gap:8px; }
+  .move .ctl{ flex:1; }
+  #jump{ background:#3a5db8; box-shadow:0 5px 0 #243e82; }
+  #fire{ background:linear-gradient(180deg,#ff6b5e,#c4382c); box-shadow:0 5px 0 #8c241b; position:relative; overflow:hidden; }
+  #fire .fill{ position:absolute; left:0; bottom:0; width:100%; background:rgba(255,255,255,.30); height:0%; }
+  #fire span{ position:relative; z-index:2; }
+  #blocker{ position:fixed; inset:0; background:rgba(8,12,24,.78); display:none; flex-direction:column; align-items:center; justify-content:center; gap:8px; text-align:center; padding:24px; z-index:20; }
+  #blocker .who2{ font-size:26px; font-weight:800; } #blocker .t2{ color:#8fa6c9; }
+  .disabled{ opacity:.35; pointer-events:none; }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <div id="join">
+    <h1>🪱 WORMS</h1>
+    <p>Enter your name to join the battle</p>
+    <input id="name" maxlength="16" placeholder="Your name" autocomplete="off">
+    <button class="big" id="joinBtn">JOIN GAME</button>
+    <p id="joinMsg" style="color:#ff8a7a"></p>
+  </div>
+
+  <div id="game" class="hidden">
+    <div id="hdr"><span class="dot" id="hdot"></span><span class="who" id="hwho">You</span><span class="timer" id="htimer"></span></div>
+    <div id="status">Connecting…</div>
+    <div id="dialWrap"><canvas id="dial" width="380" height="210"></canvas></div>
+    <div id="weapons"></div>
+    <div id="strikeRow"><div class="lab">Air-strike position (drag) — left ◄ ► right</div><input id="strike" type="range" min="0" max="100" value="50"></div>
+    <div id="pad">
+      <div class="move">
+        <button class="ctl" id="left">◀</button>
+        <button class="ctl" id="right">▶</button>
+      </div>
+      <button class="ctl" id="jump">JUMP</button>
+      <button class="ctl" id="fire"><span id="fireLabel">FIRE</span><div class="fill" id="fireFill"></div></button>
+    </div>
+  </div>
+
+  <div id="blocker"><div class="who2" id="bwho">Waiting…</div><div class="t2" id="bt">It's not your turn yet.</div></div>
+</div>
+
+<script>
+"use strict";
+const WORDER=['bazooka','grenade','cluster','shotgun','dynamite','airstrike'];
+const WMETA={ bazooka:{n:'Bazooka',charge:true,inf:true}, grenade:{n:'Grenade',charge:true},
+  cluster:{n:'Cluster',charge:true}, shotgun:{n:'Shotgun',charge:false,inf:true},
+  dynamite:{n:'Dynamite',charge:false,drop:true}, airstrike:{n:'Air Strike',charge:false,target:true} };
+
+let ws, myId=null, last=null, weapon='bazooka';
+const $ = id=>document.getElementById(id);
+
+/* ---------- join ---------- */
+$('joinBtn').onclick = ()=>{
+  const nm = ($('name').value||'').trim() || 'Player';
+  connect(nm);
+};
+$('name').addEventListener('keydown',e=>{ if(e.key==='Enter') $('joinBtn').click(); });
+
+function connect(name){
+  const proto = location.protocol==='https:'?'wss':'ws';
+  ws = new WebSocket(proto+'://'+location.host+'/?role=player');
+  ws.onopen = ()=>{ send({t:'name', name}); $('name').blur(); };
+  ws.onmessage = ev=>{ let m; try{ m=JSON.parse(ev.data); }catch(e){ return; } onMsg(m); };
+  ws.onclose = ()=>{ $('status').textContent='Disconnected — reconnecting…'; setTimeout(()=>connect(name),1200); };
+  $('joinMsg').textContent='';
+}
+function send(o){ if(ws && ws.readyState===1) ws.send(JSON.stringify(o)); }
+function input(o){ o.t='in'; send(o); }
+
+/* ---------- incoming ---------- */
+function onMsg(m){
+  if(m.t==='welcome'){ myId=m.id; $('join').classList.add('hidden'); $('game').classList.remove('hidden'); return; }
+  if(m.t==='hostGone'){ $('status').textContent='Host disconnected — waiting…'; return; }
+  if(m.t==='status'){ last=m; render(m); }
+}
+
+/* ---------- render state ---------- */
+function render(s){
+  const color = s.color || s.seatColor || '#888';
+  $('hdot').style.background = color;
+  $('hwho').textContent = s.name || 'You';
+
+  if(s.screen==='lobby'){ showBlocker(s.msg||'Waiting for host…', s.seat?('You are seat '+s.seat):''); $('htimer').textContent=''; $('status').textContent='In the lobby'; return; }
+  if(s.screen==='spectate'){ showBlocker('Spectating', s.msg||''); $('htimer').textContent=''; return; }
+  if(s.screen==='over'){ showBlocker(s.won?'🏆 You won!':'Game over', s.msg||''); $('htimer').textContent=''; return; }
+
+  // game
+  $('htimer').textContent = s.timer!=null ? s.timer : '';
+  if(s.weapon && s.weapon!==weapon && s.yourTurn){ /* host may have reset weapon */ }
+  if(s.yourTurn){
+    hideBlocker();
+    weapon = weapon || s.weapon || 'bazooka';
+    $('status').textContent = s.retreat ? '🏃 RUN! Move away — no firing' : 'YOUR TURN — aim & fire!';
+    $('status').style.color = s.retreat ? '#ffd166' : '#7fe09a';
+    buildWeapons(s);
+    setControlsEnabled(true, s.retreat);
+  } else {
+    setControlsEnabled(false,false);
+    showBlocker((s.activeName||'Someone')+"'s turn", s.suddenDeath?'⚠ Sudden death — water rising!':'Get ready…', s.activeColor);
+    $('status').textContent = 'Waiting…';
+  }
+}
+function showBlocker(title,sub,col){ const b=$('blocker'); b.style.display='flex'; $('bwho').textContent=title;
+  $('bwho').style.color = col||'#fff'; $('bt').textContent=sub||''; }
+function hideBlocker(){ $('blocker').style.display='none'; }
+function setControlsEnabled(on,retreat){
+  $('pad').classList.toggle('disabled', !on);
+  $('weapons').classList.toggle('disabled', !on || retreat);
+  // fire disabled during retreat
+  $('fire').classList.toggle('disabled', !on || retreat);
+  $('strikeRow').style.display = (on && !retreat && weapon==='airstrike') ? 'block' : 'none';
+}
+
+/* ---------- weapon strip ---------- */
+function buildWeapons(s){
+  const wrap=$('weapons'); wrap.innerHTML='';
+  WORDER.forEach(id=>{
+    const meta=WMETA[id]; const ammo = meta.inf?'∞':(s.ammo && s.ammo[id]!=null? s.ammo[id] : '–');
+    const out = !meta.inf && s.ammo && s.ammo[id]===0;
+    const b=document.createElement('div'); b.className='wbtn'+(id===weapon?' on':'')+(out?' disabled':'');
+    b.innerHTML='<div class="wn">'+meta.n+'</div><div class="wa">'+(meta.inf?'∞':ammo)+'</div>';
+    b.onclick=()=>{ if(out) return; weapon=id; input({k:'weapon',w:id}); buildWeapons(s);
+      $('strikeRow').style.display = (weapon==='airstrike')?'block':'none';
+      $('fireLabel').textContent = WMETA[id].charge?'HOLD = POWER':'FIRE'; };
+    wrap.appendChild(b);
+  });
+  $('fireLabel').textContent = WMETA[weapon].charge?'HOLD':'FIRE';
+}
+
+/* ---------- aim dial ---------- */
+const dial=$('dial'), dx=dial.getContext('2d');
+let aimAngle=Math.PI/4;
+function drawDial(){
+  const W=dial.width,H=dial.height,px=W/2,py=H-12,R=H-30;
+  dx.clearRect(0,0,W,H);
+  // arc track
+  dx.strokeStyle='#22324f'; dx.lineWidth=14; dx.beginPath(); dx.arc(px,py,R,Math.PI,2*Math.PI); dx.stroke();
+  dx.strokeStyle='#33486e'; dx.lineWidth=2;
+  for(let a=0;a<=180;a+=30){ const r=a*Math.PI/180; dx.beginPath(); dx.moveTo(px+Math.cos(Math.PI+r)*(R-9),py+Math.sin(Math.PI+r)*(R-9)); dx.lineTo(px+Math.cos(Math.PI+r)*(R+9),py+Math.sin(Math.PI+r)*(R+9)); dx.stroke(); }
+  // aim line (aimAngle: 0=right, PI/2=up, PI=left)
+  const ex=px+Math.cos(-aimAngle)*R, ey=py+Math.sin(-aimAngle)*R;
+  dx.strokeStyle=(last&&last.color)||'#ffd166'; dx.lineWidth=5; dx.beginPath(); dx.moveTo(px,py); dx.lineTo(ex,ey); dx.stroke();
+  dx.fillStyle='#fff'; dx.beginPath(); dx.arc(ex,ey,8,0,7); dx.fill();
+  dx.fillStyle=(last&&last.color)||'#ffd166'; dx.beginPath(); dx.arc(px,py,10,0,7); dx.fill();
+  dx.fillStyle='#8fa6c9'; dx.font='12px Trebuchet MS'; dx.textAlign='center';
+  dx.fillText(Math.round(aimAngle*180/Math.PI)+'°', px, py-R/2);
+}
+function dialPos(e){ const r=dial.getBoundingClientRect();
+  const t=e.touches?e.touches[0]:e; const x=(t.clientX-r.left)/r.width*dial.width; const y=(t.clientY-r.top)/r.height*dial.height;
+  const px=dial.width/2, py=dial.height-12;
+  let a=Math.atan2(py-y, x-px); if(a<0) a=0; if(a>Math.PI) a=Math.PI; return a; }
+let aiming=false, aimT=0;
+function aimSet(e){ aimAngle=dialPos(e); drawDial();
+  const now=Date.now(); if(now-aimT>55){ aimT=now; input({k:'aim',a:aimAngle}); } }
+dial.addEventListener('pointerdown',e=>{ if($('pad').classList.contains('disabled')) return; aiming=true; aimSet(e); });
+dial.addEventListener('pointermove',e=>{ if(aiming) aimSet(e); });
+window.addEventListener('pointerup',()=>{ if(aiming){ aiming=false; input({k:'aim',a:aimAngle}); } });
+drawDial();
+
+/* ---------- move / jump ---------- */
+function holdMove(btn,dir){
+  const start=e=>{ e.preventDefault(); input({k:'move',d:dir}); };
+  const stop =e=>{ e&&e.preventDefault(); input({k:'move',d:0}); };
+  btn.addEventListener('pointerdown',start); btn.addEventListener('pointerup',stop);
+  btn.addEventListener('pointerleave',stop); btn.addEventListener('pointercancel',stop);
+}
+holdMove($('left'),-1); holdMove($('right'),1);
+$('jump').addEventListener('pointerdown',e=>{ e.preventDefault(); input({k:'jump'}); });
+
+/* ---------- fire (hold to charge) ---------- */
+let charging=false, chargeStart=0, raf=0;
+const CHARGE_MS=1100;
+function fireDown(e){
+  e.preventDefault();
+  if($('fire').classList.contains('disabled')) return;
+  const meta=WMETA[weapon];
+  if(!meta.charge){ doFire(1); buzz(); return; }   // instant / drop / target
+  charging=true; chargeStart=Date.now(); animCharge();
+}
+function fireUp(e){
+  e&&e.preventDefault();
+  if(!charging) return; charging=false; cancelAnimationFrame(raf);
+  const p=Math.min(1,(Date.now()-chargeStart)/CHARGE_MS);
+  $('fireFill').style.height='0%';
+  doFire(p); buzz();
+}
+function animCharge(){ const p=Math.min(1,(Date.now()-chargeStart)/CHARGE_MS);
+  $('fireFill').style.height=(p*100)+'%'; if(p>=1){ /* auto-fire at full */ fireUp(); return; }
+  raf=requestAnimationFrame(animCharge); }
+function doFire(power){
+  const meta=WMETA[weapon];
+  const o={k:'fire',p:power};
+  if(meta.target) o.x = (+$('strike').value)/100;
+  input(o);
+}
+function buzz(){ if(navigator.vibrate) navigator.vibrate(30); }
+$('fire').addEventListener('pointerdown',fireDown);
+window.addEventListener('pointerup',fireUp);
+
+/* keep canvas crisp on resize */
+window.addEventListener('resize', drawDial);
+</script>
+</body>
+</html>
