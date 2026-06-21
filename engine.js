@@ -524,6 +524,7 @@ function drawWorm(w){
 
 /* ---- realistic held weapons (drawn at the worm, oriented to aim) ---- */
 function drawHeldWeapon(w,wpn){
+  if(!wpn) return;
   const id=wpn.id;
   ctx.save(); ctx.translate(w.x,w.y);
   if(id==='bazooka'||id==='cluster'||id==='shotgun'){
@@ -766,7 +767,7 @@ function placeWorms(heights,N,wpt){
     const surf=heights[Math.round(clamp(x,0,W-1))];
     const team=i%N;
     worms.push({ id:id++, team, x, y:surf-WORM_R-1, vx:0, vy:0, hp:100, maxHp:100,
-      facing:team%2===0?1:-1, angle:Math.PI/4, grounded:true, dead:false, tookDamageThisTurn:false });
+      facing: x < W/2 ? 1 : -1, angle:Math.PI/4, grounded:true, dead:false, tookDamageThisTurn:false });
   }
   return worms;
 }
@@ -813,6 +814,21 @@ function ctrlFire(teamIndex,power,targetX){
   if(wpn.aim==='targetPoint') return fireWeapon(1,(targetX!=null?targetX:game.activeWorm.x));
   if(wpn.aim==='instant'||wpn.aim==='drop') return fireWeapon(1);
   return fireWeapon(clamp01(power!=null?power:0.5));
+}
+// A controller left: hand its team to the AI so the game never deadlocks.
+function makeTeamBot(teamIndex,diff){
+  if(!game||!game.teams[teamIndex]) return;
+  const t=game.teams[teamIndex]; t.isAI=true; t.difficulty=diff||t.difficulty||'medium'; t.controllerId=null;
+  if(game.activeTeam===teamIndex && (game.phase===Phase.AIMING||game.phase===Phase.CHARGING)){
+    game.charge=0; game.ai=null; game.phase=Phase.AI_THINK;   // let the bot take over this turn (not yet fired)
+  }
+}
+// A waiting player took over a team: relabel it.
+function setTeamController(teamIndex,name,controllerId){
+  if(!game||!game.teams[teamIndex]) return;
+  if(name) game.teams[teamIndex].name=name;
+  game.teams[teamIndex].isAI=false;
+  if(controllerId!=null) game.teams[teamIndex].controllerId=controllerId;
 }
 
 // compact status for a controller phone
@@ -884,6 +900,7 @@ return {
   W, H, Phase, WEAPONS, WBYID, AI_DIFF, TEAM_PRESETS,
   init, start, stop, newGame, update, render,
   enableLocalInput, ctrlSetAim, ctrlMove, ctrlJump, ctrlWeapon, ctrlFire, statusFor,
+  makeTeamBot, setTeamController,
   cycleWeapon, selectWeapon,
   get game(){ return game; },
   on(name,fn){ if(name in callbacks) callbacks[name]=fn; },

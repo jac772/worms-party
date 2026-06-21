@@ -168,8 +168,17 @@ function handle(m){
   else if(m.t==='join'){ if(!players.has(m.id)){ playerOrder.push(m.id); players.set(m.id,{name:m.name}); }
     refreshLobby(); sendTo(m.id, lobbyStatusFor(m.id)); }
   else if(m.t==='name'){ if(players.has(m.id)){ players.get(m.id).name=m.name; refreshLobby(); sendTo(m.id, lobbyStatusFor(m.id)); } }
-  else if(m.t==='leave'){ players.delete(m.id);
-    const i=playerOrder.indexOf(m.id); if(i>=0) playerOrder.splice(i,1); ctrlToTeam.delete(m.id); refreshLobby(); }
+  else if(m.t==='leave'){
+    players.delete(m.id);
+    const i=playerOrder.indexOf(m.id); if(i>=0) playerOrder.splice(i,1);
+    if(inGame && ctrlToTeam.has(m.id)){
+      const team=ctrlToTeam.get(m.id); ctrlToTeam.delete(m.id);
+      const spare=playerOrder.find(pid=>!ctrlToTeam.has(pid));   // a waiting/spectating player?
+      if(spare!=null){ ctrlToTeam.set(spare,team); WG.setTeamController(team, players.get(spare).name, spare); sendTo(spare, statusForPlayer(spare)); }
+      else { WG.makeTeamBot(team, botDiff); }                    // nobody left to take over → AI continues
+    } else { ctrlToTeam.delete(m.id); }
+    refreshLobby();
+  }
   else if(m.t==='p'){ onPlayerInput(m.id, m.msg); }
 }
 const sendTo = (id,msg)=> ws && ws.readyState===1 && ws.send(JSON.stringify({t:'to',id,msg}));

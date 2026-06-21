@@ -152,6 +152,7 @@ function setControlsEnabled(on,retreat){
   // fire disabled during retreat
   $('fire').classList.toggle('disabled', !on || retreat);
   $('strikeRow').style.display = (on && !retreat && weapon==='airstrike') ? 'block' : 'none';
+  if(!on || retreat){ aiming=false; }   // stop any in-progress aiming when control is lost / during retreat
 }
 
 /* ---------- weapon strip ---------- */
@@ -162,7 +163,9 @@ function buildWeapons(s){
     const out = !meta.inf && s.ammo && s.ammo[id]===0;
     const b=document.createElement('div'); b.className='wbtn'+(id===weapon?' on':'')+(out?' disabled':'');
     b.innerHTML='<div class="wn">'+meta.n+'</div><div class="wa">'+(meta.inf?'∞':ammo)+'</div>';
-    b.onclick=()=>{ if(out) return; weapon=id; input({k:'weapon',w:id}); buildWeapons(s);
+    b.onclick=()=>{ if(out) return;
+      if(charging){ charging=false; cancelAnimationFrame(raf); $('fireFill').style.height='0%'; }  // drop any in-progress charge
+      weapon=id; input({k:'weapon',w:id}); buildWeapons(s);
       $('strikeRow').style.display = (weapon==='airstrike')?'block':'none';
       $('fireLabel').textContent = WMETA[id].charge?'HOLD = POWER':'FIRE'; };
     wrap.appendChild(b);
@@ -196,7 +199,7 @@ let aiming=false, aimT=0;
 function aimSet(e){ aimAngle=dialPos(e); drawDial();
   const now=Date.now(); if(now-aimT>55){ aimT=now; input({k:'aim',a:aimAngle}); } }
 dial.addEventListener('pointerdown',e=>{ if($('pad').classList.contains('disabled')) return; aiming=true; aimSet(e); });
-dial.addEventListener('pointermove',e=>{ if(aiming) aimSet(e); });
+dial.addEventListener('pointermove',e=>{ if(aiming && !$('pad').classList.contains('disabled')) aimSet(e); });
 window.addEventListener('pointerup',()=>{ if(aiming){ aiming=false; input({k:'aim',a:aimAngle}); } });
 drawDial();
 
@@ -225,6 +228,7 @@ function fireUp(e){
   if(!charging) return; charging=false; cancelAnimationFrame(raf);
   const p=Math.min(1,(Date.now()-chargeStart)/CHARGE_MS);
   $('fireFill').style.height='0%';
+  if($('fire').classList.contains('disabled')) return;   // turn/state changed mid-charge → don't fire
   doFire(p); buzz();
 }
 function animCharge(){ const p=Math.min(1,(Date.now()-chargeStart)/CHARGE_MS);

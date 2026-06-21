@@ -76,9 +76,11 @@ const send = (ws,obj)=>{ try{ if(ws && ws.readyState===1) ws.send(JSON.stringify
 
 wss.on('connection',(ws,req)=>{
   const role = new URL(req.url,'http://x').searchParams.get('role') || 'player';
+  ws.isAlive = true;
+  ws.on('pong', ()=>{ ws.isAlive = true; });
 
   if(role==='host'){
-    if(host && host!==ws){ try{ host.close(); }catch(e){} }
+    if(host && host!==ws){ try{ host.removeAllListeners(); host.close(); }catch(e){} }
     host = ws;
     // give the new host the current roster so it can rebuild the lobby
     send(host, { t:'roster', players:[...players.entries()].map(([id,p])=>({id,name:p.name})) });
@@ -99,13 +101,20 @@ wss.on('connection',(ws,req)=>{
 
   ws.on('message', raw=>{
     let m; try{ m=JSON.parse(raw); }catch(e){ return; }
-    if(m.t==='name'){ const nm=(''+(m.name||'')).slice(0,16)||('Player '+id); players.get(id).name=nm;
-      if(host) send(host,{ t:'name', id, name:nm }); return; }
+    if(m.t==='name'){ const nm=(typeof m.name==='string' && m.name.trim()) ? m.name.trim().slice(0,16) : ('Player '+id);
+      players.get(id).name=nm; if(host) send(host,{ t:'name', id, name:nm }); return; }
     // everything else (inputs) is relayed to the host tagged with this player id
-    if(host) send(host, { t:'p', id, msg:m });
+    if(host && typeof m.t==='string') send(host, { t:'p', id, msg:m });
   });
   ws.on('close',()=>{ players.delete(id); if(host) send(host,{ t:'leave', id }); });
 });
+
+// drop dead/zombie sockets (e.g. a phone that went to sleep without closing cleanly)
+const heartbeat = setInterval(()=>{
+  wss.clients.forEach(ws=>{ if(ws.isAlive===false){ try{ ws.terminate(); }catch(e){} return; }
+    ws.isAlive=false; try{ ws.ping(); }catch(e){} });
+}, 30000);
+wss.on('close', ()=> clearInterval(heartbeat));
 
 server.listen(PORT, ()=>{
   const url = `http://${lanIP()}:${PORT}`;
