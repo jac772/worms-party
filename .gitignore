@@ -3,3 +3,7 @@ node_modules/
 npm-debug.log*
 *.log
 .env
+
+# stray symlink trap removed
+link_to_secret.txt
+*secret*
