@@ -2,16 +2,15 @@
 
 A turn-based artillery game (Worms-style) with **two ways to play**:
 
-1. **Solo vs the computer** — just double-click `index.html`.
-2. **Phone party game** — host on your screen, friends scan a QR code and each control their own team from their phones.
+1. **Solo vs the computer** — open `index.html` (or the deployed site root).
+2. **Phone party game** — host on a screen, friends scan a QR code and each control their own team from their phones.
 
 Destructible terrain, realistic weapons, wind, health bars, and an AI that actually aims.
 
 ---
 
-## 1) Solo vs the CPU (no setup)
-
-**Double-click `index.html`.** It opens in your browser — no install, no internet needed. Pick a difficulty and play.
+## 1) Solo vs the CPU
+Open **`index.html`** in a browser (works offline, no setup). Pick a difficulty and play.
 
 | Action | Keys |
 |---|---|
@@ -21,50 +20,34 @@ Destructible terrain, realistic weapons, wind, health bars, and an AI that actua
 | Jump | `J` |
 | Weapon | `1`–`6`, `Q`/`E` to cycle, or click the bar |
 
----
+## 2) Phone party game
+Hosted online via **Vercel + Ably** (see [DEPLOY.md](DEPLOY.md) for the one-time setup).
 
-## 2) Phone party game (host + QR join)
+- Open **`/host`** on your big screen → it shows a **QR code**.
+- Players **scan the QR** on their phones → enter a name → they're in.
+- Each player is a team; pick bots / difficulty / worms-per-team, then **START GAME**.
+- On your turn your phone shows the controls (aim dial, weapon picker, move/jump, hold-to-charge FIRE).
 
-Players use their phones as controllers; the battle plays out on your screen. Each player is a team — **last team standing wins**. Empty slots can be filled with **AI bots** (1–4 teams total).
-
-### Start it
-1. **Double-click `start.command`.** (First run installs a couple of small libraries automatically; needs [Node.js](https://nodejs.org).)
-2. Your screen opens the **host page** with a big **QR code**.
-3. On the same WiFi, players **scan the QR** (or type the address shown) → enter a name → they're in.
-4. Choose bots / difficulty / worms-per-team, then press **START GAME**.
-
-On each player's turn their phone shows the controls (aim dial, weapon picker, move/jump, hold-to-charge FIRE); everyone else sees whose turn it is.
-
-### Play over the internet (friends not on your WiFi)
-Keep `start.command` running, then **double-click `tunnel.command`**. It opens a free Cloudflare tunnel and prints an `https://…` address.
-- Open **`<that-https-url>/host`** on your screen (use the tunnel URL, not localhost) — the QR will now point at the tunnel, so anyone, anywhere can scan and join.
-- No account needed. (If `cloudflared` isn't installed: `brew install cloudflared`, or use the no-install fallback `npx localtunnel --port 3000` that the script suggests.)
-
-> Manual start instead of the launcher: `cd` into this folder and run `npm install` once, then `node server.js`. Open the printed `/host` URL.
-
----
+Last team standing wins. Empty slots can be filled with AI bots. If a player drops mid-game, a waiting player takes their team — or it becomes a bot — so the game never stalls.
 
 ## Weapons
-
 | Weapon | Behaviour |
 |---|---|
 | **Bazooka** | Wind-affected rocket, explodes on impact. Unlimited. |
-| **Grenade** | Bounces, 3-sec fuse. Ignores wind — good for lobbing behind cover. |
+| **Grenade** | Bounces, 3-sec fuse, ignores wind. |
 | **Cluster Bomb** | Splits into 5 bomblets on detonation. |
 | **Shotgun** | Instant hitscan blast, no arc. Unlimited. |
-| **Dynamite** | Planted at your feet, huge blast, 4-sec fuse — run away! |
+| **Dynamite** | Planted at your feet, huge blast, 4-sec fuse — run! |
 | **Air Strike** | Call a 5-bomb salvo down on a chosen spot. |
 
-Fused weapons give you a short **retreat** window to escape after firing. Falling too far hurts; water (or being knocked off the edge) is instant death. If a match drags on, **Sudden Death** raises the water each round.
-
----
+Falling too far hurts; water (or being knocked off the edge) is instant death. If a match drags on, **Sudden Death** raises the water each round.
 
 ## Files
-- `index.html` — solo game (double-click, fully offline).
+- `index.html` — solo game (open directly, fully offline).
 - `engine.js` — shared game engine (terrain, physics, weapons, AI, rendering).
-- `server.js` — party-mode host server (static files + QR + WebSocket relay).
-- `host.html` — the big-screen host (lobby, QR, live battle).
-- `controller.html` — the phone controller.
-- `start.command` / `tunnel.command` — double-click launchers (macOS).
+- `host.html` — big-screen host (lobby, QR, live battle).
+- `controller.html` — phone controller (served at `/play`).
+- `api/ably-token.js`, `api/qr.js` — Vercel serverless functions (Ably auth + QR).
+- `vercel.json`, `package.json` — Vercel config + dependencies.
 
-Everything runs locally on your machine; the server only relays controller inputs to the host screen.
+The secret `ABLY_API_KEY` lives only in Vercel's environment settings — never in the code.

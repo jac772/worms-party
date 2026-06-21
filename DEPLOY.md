@@ -1,45 +1,56 @@
-# Putting Worms online
+# Putting Worms online (Vercel + Ably)
 
-## The one thing to know first
-- **Solo vs CPU** = static files → can run on *any* free static host (incl. GitHub Pages).
-- **Phone party multiplayer** = needs a live **Node server** (`server.js`) for the WebSocket connection
-  → GitHub Pages **cannot** run this. Use a Node host (below). It's still free.
+The phone party game runs entirely on **Vercel**. Vercel serves the pages and two tiny
+serverless functions; the live phone↔host connection runs through **Ably** (a free
+real-time service), because Vercel can't hold a WebSocket open itself.
+
+You set this up **once**. After that, every `git push` auto-deploys.
 
 ---
 
-## Step 1 — Put it on GitHub
-From inside the `worms-game` folder:
+## One-time setup
 
+### 1. Create a free Ably account + key
+1. Sign up at **ably.com** (free, no card).
+2. Dashboard → your app → **API Keys** → copy the **Root key** (looks like `appId.keyId:secret`).
+
+### 2. Import the repo into Vercel
+1. **vercel.com** → **Add New… → Project** → import **`jac772/worms-party`**.
+2. Framework preset: **Other** (it's static + `/api` functions — no build step needed).
+3. Click **Deploy**.
+
+### 3. Add the Ably key to Vercel
+1. Vercel → your project → **Settings → Environment Variables**.
+2. Add **`ABLY_API_KEY`** = the Ably root key. Tick **Production, Preview, Development**. Save.
+3. **Redeploy** (Deployments → ⋯ → Redeploy) so the key takes effect.
+
+Done. Your game is at `https://<project>.vercel.app`.
+- **Host screen:** open `https://<project>.vercel.app/host` on your big screen.
+- **Players:** scan the QR it shows (it points at `…/play?room=CODE`).
+
+---
+
+## How it fits together
+- `index.html` + `engine.js` — the game (solo works with zero server).
+- `host.html` — big-screen host; runs the game, shows the QR, talks to phones via Ably.
+- `controller.html` — phone controller (served at `/play`).
+- `api/ably-token.js` — hands out short-lived Ably tokens so the secret key stays on the server.
+- `api/qr.js` — generates the join QR.
+- `ABLY_API_KEY` lives only in Vercel's env — never in the code or the repo.
+
+## Local development (optional)
 ```bash
-git init
-git add .
-git commit -m "Worms artillery party game"
-gh repo create worms-party --public --source=. --push   # needs the GitHub CLI
-# …or create an empty repo on github.com and:
-#   git remote add origin https://github.com/<you>/worms-party.git
-#   git branch -M main && git push -u origin main
+npm i -g vercel
+npm install
+vercel link                       # link to the Vercel project
+vercel env pull .env.development.local   # pulls ABLY_API_KEY locally
+vercel dev                        # http://localhost:3000  (static + /api + Ably)
 ```
-(`node_modules` is git-ignored on purpose — the host reinstalls it.)
+Open `http://localhost:3000/host` and, in another tab/phone, the `/play?room=CODE` URL.
 
-## Step 2 — Run it online (full multiplayer) — Render, free
-1. Go to **render.com**, sign up (free), connect your GitHub.
-2. **New + → Web Service** → pick the `worms-party` repo.
-3. Settings (Render usually auto-detects these from `render.yaml`):
-   - **Build command:** `npm install`
-   - **Start command:** `node server.js`
-   - **Instance type:** Free
-4. **Create Web Service.** After it builds you get a public URL like `https://worms-party.onrender.com`.
-5. On your screen open **`https://worms-party.onrender.com/host`** → the QR now points at that public URL.
-   Anyone, anywhere can scan it and play. (No tunnel needed once it's hosted.)
+## Solo-only on any static host
+The single-player game (`index.html` + `engine.js`) is pure static files and will run on
+GitHub Pages, Netlify, plain Vercel, etc. The party mode needs the Vercel functions + Ably above.
 
-> Note: Render's free tier sleeps after ~15 min idle — the first visit after a nap takes ~30s to wake. Fine for casual play.
-
-**Other free Node hosts that also work:** Railway, Fly.io, Glitch, Replit. Any host that runs `node server.js` and supports WebSockets is fine; the app reads the port from the `PORT` env var automatically.
-
----
-
-## (Optional) GitHub Pages — solo game only
-If you only want the single-player game at a public link:
-1. Push the repo (Step 1).
-2. Repo **Settings → Pages → Deploy from branch → `main` / root**.
-3. Your game is at `https://<you>.github.io/worms-party/` — solo vs CPU works; the party "Host" button won't (no server).
+## Free-tier note
+Ably free: 200 concurrent connections, 6M messages/month — comfortably more than a party game needs.

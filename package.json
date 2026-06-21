@@ -1,10 +1,11 @@
 {
   "name": "worms-party",
-  "version": "1.0.0",
-  "description": "Worms artillery party game — host on your screen, players join by QR on their phones.",
-  "type": "commonjs",
-  "main": "server.js",
-  "scripts": { "start": "node server.js" },
+  "version": "2.0.0",
+  "private": true,
+  "description": "Worms artillery party game — solo vs AI + phone multiplayer (Vercel + Ably).",
   "engines": { "node": ">=18" },
-  "dependencies": { "ws": "^8.18.0", "qrcode": "^1.5.4" }
+  "dependencies": {
+    "ably": "^2.5.0",
+    "qrcode": "^1.5.4"
+  }
 }

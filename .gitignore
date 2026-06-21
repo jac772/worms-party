@@ -2,7 +2,11 @@ node_modules/
 .DS_Store
 npm-debug.log*
 *.log
+
+# local env (Ably key etc.) — never commit
 .env
+.env*.local
+.vercel
 
 # stray symlink trap removed
 link_to_secret.txt

@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Worms Party — Host</title>
+<script src="https://cdn.ably.com/lib/ably.min-2.js"></script>
 <style>
   html,body { margin:0; height:100%; background:#070b16; overflow:hidden;
     font-family:"Trebuchet MS","Segoe UI",system-ui,sans-serif; color:#e8eef7; }
@@ -17,6 +18,7 @@
   .qrbox { background:#fff; border-radius:18px; padding:20px; box-shadow:0 20px 60px rgba(0,0,0,.6); }
   .qrbox svg, .qrbox img { width:300px; height:300px; display:block; }
   .joinurl { margin-top:12px; text-align:center; color:#0c1226; font-weight:700; font-size:15px; word-break:break-all; }
+  .room { margin-top:6px; text-align:center; color:#3a63b8; font-weight:700; font-size:13px; letter-spacing:2px; }
   .right { min-width:420px; }
   h1 { margin:0 0 2px; font-size:48px; letter-spacing:3px; color:#ffd166; text-shadow:0 3px 0 #7a5a10,0 0 30px rgba(255,209,102,.35); }
   .sub { color:#8fa6c9; margin:0 0 18px; letter-spacing:1px; }
@@ -37,8 +39,8 @@
   .btn:hover { filter:brightness(1.07); } .btn:active { transform:translateY(3px); box-shadow:0 3px 0 #2a6322; }
   .btn:disabled { filter:grayscale(.7) brightness(.7); cursor:not-allowed; }
   .hint { color:#5e7398; font-size:13px; margin-top:12px; }
+  #conn { color:#ffb04d; font-size:13px; margin-top:6px; min-height:16px; }
 
-  /* corner QR shown during the game so latecomers can still scan */
   #cornerQR { position:fixed; right:14px; bottom:70px; background:#fff; border-radius:10px; padding:8px; z-index:5; display:none; box-shadow:0 6px 20px rgba(0,0,0,.5); }
   #cornerQR svg, #cornerQR img { width:96px; height:96px; display:block; }
   #cornerQR div { text-align:center; color:#0c1226; font-size:10px; font-weight:700; margin-top:4px; }
@@ -55,7 +57,7 @@
 <div id="lobby" class="overlay">
   <div class="lobby">
     <div>
-      <div class="qrbox"><div id="qrslot"></div><div class="joinurl" id="joinUrl">…</div></div>
+      <div class="qrbox"><div id="qrslot"></div><div class="joinurl" id="joinUrl">…</div><div class="room" id="roomCode"></div></div>
     </div>
     <div class="right">
       <h1>WORMS PARTY</h1>
@@ -71,14 +73,13 @@
       </div>
       <button class="btn" id="startBtn" disabled>START GAME</button>
       <div class="hint" id="hint">Need at least 2 teams (players + bots) to start.</div>
+      <div id="conn">Connecting…</div>
     </div>
   </div>
 </div>
 
-<!-- corner QR during play -->
 <div id="cornerQR"><div id="cornerSlot"></div><div>scan to join next round</div></div>
 
-<!-- WIN -->
 <div id="winOv" class="overlay hidden"><div class="card">
   <h1 id="winTitle">Winner!</h1><p id="winSub"></p>
   <button class="btn" id="againBtn">PLAY AGAIN</button>
@@ -92,25 +93,22 @@ WG.init(canvas); WG.start();
 const PRESET = WG.TEAM_PRESETS;
 
 /* ---------------- lobby state ---------------- */
-const playerOrder = [];                 // join order of ids
-const players = new Map();              // id -> {name}
+const playerOrder = [];                 // join order of clientIds
+const players = new Map();              // clientId -> {name}
 let botCount = 1, botDiff = 'medium', wpt = 3;
 let inGame = false;
-const ctrlToTeam = new Map();           // playerId -> teamIndex (during a game)
+const ctrlToTeam = new Map();           // clientId -> teamIndex (during a game)
 
-/* ---------------- QR + join URL ---------------- */
-async function joinBase(){
-  if(['localhost','127.0.0.1'].includes(location.hostname)){
-    try{ const j=await (await fetch('/api/netinfo')).json(); return j.lan; }catch(e){}
-  }
-  return location.origin;
-}
-async function setupJoin(){
-  const base = await joinBase();
-  const url = base + '/play';
-  document.getElementById('joinUrl').textContent = url.replace(/^https?:\/\//,'');
-  document.getElementById('joinUrl2').textContent = url.replace(/^https?:\/\//,'');
-  const qr = '/api/qr?text='+encodeURIComponent(url);
+/* ---------------- room code + QR ---------------- */
+const ROOM = (crypto.getRandomValues(new Uint32Array(1))[0].toString(36).toUpperCase()
+  .replace(/[^A-Z0-9]/g,'') + 'X4K9Q').slice(0,5);
+function setupJoin(){
+  const url = location.origin + '/play?room=' + ROOM;
+  const shown = url.replace(/^https?:\/\//,'');
+  document.getElementById('joinUrl').textContent = shown;
+  document.getElementById('joinUrl2').textContent = shown;
+  document.getElementById('roomCode').textContent = 'ROOM ' + ROOM;
+  const qr = '/api/qr?text=' + encodeURIComponent(url);
   document.getElementById('qrslot').innerHTML = '<img alt="join QR" src="'+qr+'">';
   document.getElementById('cornerSlot').innerHTML = '<img alt="join QR" src="'+qr+'">';
 }
@@ -136,7 +134,7 @@ function refreshLobby(){
   if(playerOrder.length===0){ ul.innerHTML='<li class="empty">No players yet — waiting for phones…</li>'; }
   else playerOrder.slice(0,4).forEach((id,i)=>{
     const li=document.createElement('li'); li.className='pill';
-    li.innerHTML='<span class="dot" style="background:'+PRESET[i].color+'"></span>'+escapeHtml(players.get(id).name);
+    li.innerHTML='<span class="dot" style="background:'+PRESET[i].color+'"></span>'+escapeHtml((players.get(id)||{}).name||'Player');
     ul.appendChild(li);
   });
   if(playerOrder.length>4){ const li=document.createElement('li'); li.className='empty';
@@ -151,38 +149,55 @@ function refreshLobby(){
 }
 function escapeHtml(s){ return (''+s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
-/* ---------------- websocket (as host) ---------------- */
-let ws;
-function connect(){
-  const proto = location.protocol==='https:'?'wss':'ws';
-  ws = new WebSocket(proto+'://'+location.host+'/?role=host');
-  ws.onmessage = ev=>{ let m; try{ m=JSON.parse(ev.data); }catch(e){ return; } handle(m); };
-  ws.onclose = ()=> setTimeout(connect, 1000);
-}
-connect();
+/* ---------------- realtime (Ably presence + pub/sub) ---------------- */
+let ably, ch;
+const sendTo  = (id,msg)=> { if(ch) ch.publish('to', { to:id, msg }); };
+const sendAll = (msg)=>    { if(ch) ch.publish('all', { msg }); };
+function conn(txt,bad){ const el=document.getElementById('conn'); el.textContent=txt||''; el.style.color = bad?'#ff6b5e':'#5fd36a'; }
 
-function handle(m){
-  if(m.t==='roster'){ playerOrder.length=0; players.clear();
-    m.players.forEach(p=>{ playerOrder.push(p.id); players.set(p.id,{name:p.name}); });
-    refreshLobby(); pushLobbyStatus(); }
-  else if(m.t==='join'){ if(!players.has(m.id)){ playerOrder.push(m.id); players.set(m.id,{name:m.name}); }
-    refreshLobby(); sendTo(m.id, lobbyStatusFor(m.id)); }
-  else if(m.t==='name'){ if(players.has(m.id)){ players.get(m.id).name=m.name; refreshLobby(); sendTo(m.id, lobbyStatusFor(m.id)); } }
-  else if(m.t==='leave'){
-    players.delete(m.id);
-    const i=playerOrder.indexOf(m.id); if(i>=0) playerOrder.splice(i,1);
-    if(inGame && ctrlToTeam.has(m.id)){
-      const team=ctrlToTeam.get(m.id); ctrlToTeam.delete(m.id);
-      const spare=playerOrder.find(pid=>!ctrlToTeam.has(pid));   // a waiting/spectating player?
-      if(spare!=null){ ctrlToTeam.set(spare,team); WG.setTeamController(team, players.get(spare).name, spare); sendTo(spare, statusForPlayer(spare)); }
-      else { WG.makeTeamBot(team, botDiff); }                    // nobody left to take over → AI continues
-    } else { ctrlToTeam.delete(m.id); }
-    refreshLobby();
-  }
-  else if(m.t==='p'){ onPlayerInput(m.id, m.msg); }
+function addPlayer(id,name){
+  if(!players.has(id)){ playerOrder.push(id); players.set(id,{name:name||'Player'}); }
+  else if(name) players.get(id).name=name;
+  refreshLobby();
+  if(!inGame) sendTo(id, lobbyStatusFor(id));
 }
-const sendTo = (id,msg)=> ws && ws.readyState===1 && ws.send(JSON.stringify({t:'to',id,msg}));
-const sendAll = (msg)=> ws && ws.readyState===1 && ws.send(JSON.stringify({t:'all',msg}));
+function seedRoster(members){
+  (members||[]).filter(m=>!(m.data&&m.data.role==='host'))
+    .sort((a,b)=> (((a.data&&a.data.joinedAt)||a.timestamp||0) - ((b.data&&b.data.joinedAt)||b.timestamp||0)))
+    .forEach(m=>{ if(!players.has(m.clientId)){ playerOrder.push(m.clientId); players.set(m.clientId,{name:(m.data&&m.data.name)||'Player'}); } });
+  refreshLobby(); pushLobbyStatus();
+}
+function onLeave(id){
+  if(!players.has(id) && playerOrder.indexOf(id)<0) return;
+  players.delete(id);
+  const idx=playerOrder.indexOf(id); if(idx>=0) playerOrder.splice(idx,1);
+  if(inGame && ctrlToTeam.has(id)){
+    const team=ctrlToTeam.get(id); ctrlToTeam.delete(id);
+    const spare=playerOrder.find(pid=>!ctrlToTeam.has(pid));
+    if(spare!=null){ ctrlToTeam.set(spare,team); WG.setTeamController(team, players.get(spare).name, spare); sendTo(spare, statusForPlayer(spare)); }
+    else { WG.makeTeamBot(team, botDiff); }
+  } else { ctrlToTeam.delete(id); }
+  refreshLobby();
+}
+function startAbly(){
+  ably = new Ably.Realtime({ authUrl:'/api/ably-token?clientId=host-'+ROOM, clientId:'host-'+ROOM, echoMessages:false });
+  ch = ably.channels.get('worms:'+ROOM);
+  ch.presence.subscribe('enter', m=>{ if(m.data&&m.data.role==='host') return; addPlayer(m.clientId, m.data&&m.data.name); });
+  ch.presence.subscribe('update', m=>{ if(m.data&&m.data.role==='host') return;
+    if(players.has(m.clientId)){ players.get(m.clientId).name=(m.data&&m.data.name)||players.get(m.clientId).name; refreshLobby(); if(!inGame) sendTo(m.clientId, lobbyStatusFor(m.clientId)); } });
+  ch.presence.subscribe('leave', m=>{ if(m.data&&m.data.role==='host') return; onLeave(m.clientId); });
+  ch.subscribe('p', msg=> onPlayerInput(msg.data.from, msg.data.msg));
+  ch.attach(err=>{
+    if(err){ conn('Realtime error — check ABLY_API_KEY', true); return; }
+    ch.presence.enter({ role:'host' });
+    ch.presence.get((e,members)=>{ if(!e) seedRoster(members); });
+  });
+  ably.connection.on('connected',   ()=> conn('Connected — ready for players', false));
+  ably.connection.on('disconnected',()=> conn('Reconnecting…', true));
+  ably.connection.on('suspended',   ()=> conn('Connection lost — retrying…', true));
+  ably.connection.on('failed', st=> conn('Connection failed — is ABLY_API_KEY set in Vercel?', true));
+}
+if(window.Ably){ startAbly(); } else { conn('Could not load Ably library (offline?)', true); }
 
 /* ---------------- lobby status to phones ---------------- */
 function colorFor(id){ const i=playerOrder.indexOf(id); return i>=0&&i<4?PRESET[i].color:'#888'; }
@@ -215,7 +230,8 @@ function startGame(){
 }
 document.getElementById('startBtn').onclick = startGame;
 document.getElementById('againBtn').onclick = ()=>{ document.getElementById('winOv').classList.add('hidden');
-  if(Math.min(playerOrder.length,4)+botCount>=2) startGame(); else { inGame=false; document.getElementById('lobby').classList.remove('hidden'); document.getElementById('cornerQR').style.display='none'; refreshLobby(); pushLobbyStatus(); } };
+  if(Math.min(playerOrder.length,4)+botCount>=2) startGame();
+  else { inGame=false; document.getElementById('lobby').classList.remove('hidden'); document.getElementById('cornerQR').style.display='none'; refreshLobby(); pushLobbyStatus(); } };
 
 /* ---------------- routing phone input into the engine ---------------- */
 function onPlayerInput(id, msg){
@@ -234,11 +250,11 @@ function onPlayerInput(id, msg){
 function statusForPlayer(id){
   const team = ctrlToTeam.get(id);
   if(team==null) return { t:'status', screen:'spectate', msg:'Game in progress — you\'ll join next round.' };
-  const s = WG.statusFor(team); s.t='status'; s.screen='game'; s.seatColor=PRESET[playerOrder.indexOf(id)%4].color;
+  const s = WG.statusFor(team); s.t='status'; s.screen='game'; s.seatColor=PRESET[Math.max(0,playerOrder.indexOf(id))%4].color;
   return s;
 }
 function broadcastStatus(){ if(!inGame) return; playerOrder.forEach(id=> sendTo(id, statusForPlayer(id))); }
-setInterval(()=>{ if(inGame) broadcastStatus(); }, 140);
+setInterval(()=>{ if(inGame) broadcastStatus(); }, 160);
 WG.on('onTurnChange', ()=> broadcastStatus());
 
 /* ---------------- win ---------------- */
@@ -251,7 +267,6 @@ WG.on('onWin', winner=>{
     sub.textContent=survivors+' worm'+(survivors===1?'':'s')+' left standing.'; }
   ov.classList.remove('hidden');
   document.getElementById('cornerQR').style.display='none';
-  // tell phones the result
   playerOrder.forEach(id=>{ const team=ctrlToTeam.get(id);
     sendTo(id, { t:'status', screen:'over', won: team!=null && team===winner,
       msg: winner==='draw'?'Draw!':(WG.game.teams[winner].name+' wins!') }); });
